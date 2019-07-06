@@ -14,13 +14,20 @@ import java.util.List;
 
 public class NoteActivity extends AppCompatActivity {
 
-    public static final String NOTE_INFO = "com.example.notekeeper.NOTE_INFO";
-    private NoteInfo note;
+    //public static final String NOTE_INFO = "com.example.notekeeper.NOTE_INFO";
+    public static final String NOTE_POSITION = "com.example.notekeeper.NOTE_POSITION";
+    public static final int POSITION_NOT_SET = -1;
 
+    private NoteInfo note;
     private boolean isNewNote;
     private EditText textNoteTitle;
     private EditText textNoteText;
     private Spinner spinnerCourses;
+    private int notePosition;
+    private boolean isCancelling;
+    private String originalNoteCourseId;
+    private String originalNoteTitle;
+    private String originalNoteText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,14 +36,15 @@ public class NoteActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        //Populate spinner dropdown
         spinnerCourses = (Spinner) findViewById(R.id.spinner_courses);
-
         List<CourseInfo> courses = DataManager.getInstance().getCourses();
         ArrayAdapter<CourseInfo> adapterCourses = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, courses);
         adapterCourses.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerCourses.setAdapter(adapterCourses);
 
         readDisplayStateValues();
+        saveOriginalNoteValues();
 
         textNoteTitle = (EditText) findViewById(R.id.text_note_title);
         textNoteText = (EditText)  findViewById(R.id.text_note_text);
@@ -45,6 +53,47 @@ public class NoteActivity extends AppCompatActivity {
             displayNote(spinnerCourses, textNoteTitle, textNoteText);
         }
 
+    }
+
+    private void saveOriginalNoteValues() {
+        if(isNewNote)
+            return;
+
+        originalNoteCourseId = note.getCourse().getCourseId();
+        originalNoteTitle = note.getTitle();
+        originalNoteText = note.getText();
+    }
+
+    @Override
+    protected void onPause() {
+
+        super.onPause();
+
+        if(isCancelling){
+
+            if(isNewNote){
+                DataManager.getInstance().removeNote(notePosition);
+            }else{
+                storePreviousNoteValues();
+            }
+
+        } else {
+            saveNote();
+        }
+    }
+
+    private void storePreviousNoteValues() {
+        CourseInfo course = DataManager.getInstance().getCourse(originalNoteCourseId);
+        note.setCourse(course);
+        note.setTitle(originalNoteTitle);
+        note.setText(originalNoteText);
+    }
+
+    private void saveNote() {
+        //This only writes the changes to the current 'note' object. No persistence
+        note.setCourse((CourseInfo) spinnerCourses.getSelectedItem());
+        note.setTitle(textNoteTitle.getText().toString());
+        note.setText(textNoteText.getText().toString());
     }
 
     private void displayNote(Spinner spinnerCourses, EditText textNoteTitle, EditText textNoteText) {
@@ -61,9 +110,23 @@ public class NoteActivity extends AppCompatActivity {
     private void readDisplayStateValues() {
         /* getIntent() will return the intent used to start this particular activity.The intent will be sent from another Activity */
         Intent intent = getIntent();
-        note = intent.getParcelableExtra(NOTE_INFO);
+//        note = intent.getParcelableExtra(NOTE_POSITION);
+        int position = intent.getIntExtra(NOTE_POSITION, POSITION_NOT_SET);
 
-        isNewNote = note == null;
+//        isNewNote = note == null;
+        isNewNote = position == POSITION_NOT_SET;
+
+        if(isNewNote){
+            createNewNote();
+        }else {
+            note = DataManager.getInstance().getNotes().get(position);
+        }
+    }
+
+    private void createNewNote() {
+        DataManager dm = DataManager.getInstance();
+        notePosition = dm.createNewNote();
+        note = dm.getNotes().get(notePosition);
     }
 
     @Override
@@ -84,6 +147,9 @@ public class NoteActivity extends AppCompatActivity {
         if (id == R.id.action_send_email) {
             sendEmail();
             return true;
+        } else if(id == R.id.action_cancel) {
+            isCancelling = true;
+            finish();   //exit and go back to the previous Activity. onPause() will be called before going back
         }
 
         return super.onOptionsItemSelected(item);
